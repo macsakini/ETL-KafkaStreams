@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+}
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+//    implementation files("/Users/mac/Downloads/apache-zookeeper-3.8.1-bin/lib/zookeeper-3.8.1.jar")
+//    implementation fileTree(dir: '/Users/mac/Documents/Dev/Spark/spark-3.3.1-bin-hadoop3/jars/', include: ['*.jar'])
+//    implementation fileTree(dir: '/Users/mac/Documents/Dev/jar_files/', include: ["*.jar"] )
+    implementation group: 'org.apache.kafka', name: 'kafka-streams', version: '3.4.0'
+    implementation group: 'org.json', name: 'json', version: '20220924'
+
+
+}
+
+test {
+    useJUnitPlatform()
+}
