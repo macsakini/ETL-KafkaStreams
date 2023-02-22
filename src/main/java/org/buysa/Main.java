@@ -6,16 +6,19 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler;
+import org.apache.kafka.streams.kstream.*;
 import org.json.JSONObject;
 
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 
 public class Main {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
 
         Properties localproperties = new Properties();
         try (InputStream propertiesfile = ClassLoader.getSystemResourceAsStream("local.properties");) {
@@ -44,17 +47,39 @@ public class Main {
         properties.setProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG, localproperties.getProperty("SSL_PASSWORD"));
         properties.setProperty(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "");
 
+        CountDownLatch latch = new CountDownLatch(260);
+
         StreamsBuilder builder = new StreamsBuilder();
 
-        KStream <String, JSONObject> inputStream = builder.stream("items");
+        KStream <String, String> inputStream = builder.stream("items");
 
-        inputStream
-                .filter(((key, value) -> {return key.equals("52539110 ");}))
-                .to("newtestitemo");
-//        inputStream.foreach((key, value) -> {
-//            JSONObject json = new JSONObject(value);
-//            System.out.println(json.toString());
-//        });
+        KGroupedStream<String, String> inputgrouped = inputStream
+                .mapValues((value) -> {
+                    System.out.println(value);
+                    return value;
+                })
+                .groupByKey();
+
+        KTable<String, String> inputtable = inputgrouped.reduce(
+                (event1, event2) -> {
+                        latch.countDown();
+                        return event1 + " , " + event2;
+                    },
+                Materialized.with(Serdes.String(), Serdes.String())
+        );
+
+        try{
+            latch.await();
+            inputtable.toStream()
+                    .peek((key, value) -> {
+                        System.out.println(value);
+                    }).to("processeditems", Produced.with(Serdes.String(),Serdes.String()));
+        }catch (InterruptedException ex){
+            ex.printStackTrace();
+        }catch(Exception ex){
+            System.out.println("Error occured due to " + ex);
+        }
+
 
         KafkaStreams streams = new KafkaStreams(builder.build(), properties);
         streams.start();
