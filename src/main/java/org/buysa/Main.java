@@ -2,6 +2,7 @@ package org.buysa;
 
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
+import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -32,6 +33,7 @@ public class Main {
         properties.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG,localproperties.getProperty("BOOTSTRAP_SERVERS") );
         properties.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         properties.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+        properties.put(StreamsConfig.STATESTORE_CACHE_MAX_BYTES_CONFIG, "");
 
         properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
         if(localproperties.getProperty("PRODUCTION").equals("true")){
@@ -60,12 +62,16 @@ public class Main {
                 })
                 .groupByKey();
 
+        Materialized
+                .as("eventstore");
+
         KTable<String, String> inputtable = inputgrouped.reduce(
                 (event1, event2) -> {
                         latch.countDown();
                         return event1 + " , " + event2;
                     },
-                Materialized.with(Serdes.String(), Serdes.String())
+                Materialized
+                        .with(Serdes.String(), Serdes.String())
         );
 
         try{
@@ -82,7 +88,14 @@ public class Main {
 
 
         KafkaStreams streams = new KafkaStreams(builder.build(), properties);
-        streams.start();
-        Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+        try{
+            streams.start();
+        }catch(AuthorizationException e){
+            e.printStackTrace();
+        }finally{
+            Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+        }
+
+
     }
 }
