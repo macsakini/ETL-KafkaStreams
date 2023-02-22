@@ -33,7 +33,7 @@ public class Main {
         properties.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG,localproperties.getProperty("BOOTSTRAP_SERVERS") );
         properties.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         properties.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
-        properties.put(StreamsConfig.STATESTORE_CACHE_MAX_BYTES_CONFIG, "");
+        properties.put(StreamsConfig.STATESTORE_CACHE_MAX_BYTES_CONFIG, 500000000);
 
         properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
         if(localproperties.getProperty("PRODUCTION").equals("true")){
@@ -49,45 +49,36 @@ public class Main {
         properties.setProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG, localproperties.getProperty("SSL_PASSWORD"));
         properties.setProperty(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "");
 
-        CountDownLatch latch = new CountDownLatch(260);
 
         StreamsBuilder builder = new StreamsBuilder();
 
         KStream <String, String> inputStream = builder.stream("items");
 
-        KGroupedStream<String, String> inputgrouped = inputStream
+        KGroupedStream<String, String> inputGrouped = inputStream
                 .mapValues((value) -> {
-                    System.out.println(value);
+                    JSONObject object =  new JSONObject(value);
                     return value;
                 })
                 .groupByKey();
 
-        Materialized
-                .as("eventstore");
+        Materialized.as("eventstore");
 
-        KTable<String, String> inputtable = inputgrouped.reduce(
-                (event1, event2) -> {
-                        latch.countDown();
-                        return event1 + " , " + event2;
-                    },
-                Materialized
-                        .with(Serdes.String(), Serdes.String())
+        KTable<String, String> inputTable = inputGrouped.reduce(
+                (event1, event2) -> event1 + " , " + event2,
+                Materialized.with(Serdes.String(), Serdes.String())
         );
 
         try{
-            latch.await();
-            inputtable.toStream()
+            inputTable.toStream()
                     .peek((key, value) -> {
                         System.out.println(value);
                     }).to("processeditems", Produced.with(Serdes.String(),Serdes.String()));
-        }catch (InterruptedException ex){
-            ex.printStackTrace();
-        }catch(Exception ex){
+        } catch(Exception ex){
             System.out.println("Error occured due to " + ex);
         }
 
-
         KafkaStreams streams = new KafkaStreams(builder.build(), properties);
+
         try{
             streams.start();
         }catch(AuthorizationException e){
